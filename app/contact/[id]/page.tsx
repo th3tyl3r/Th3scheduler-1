@@ -167,7 +167,13 @@ export default function ContactDetailsPage() {
               </div>
             ) : (
               tasks
-                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                // ✅ Fixed: guard against task.date being undefined
+                .sort((a, b) => {
+                  if (!a.date && !b.date) return 0;
+                  if (!a.date) return 1;
+                  if (!b.date) return -1;
+                  return new Date(a.date).getTime() - new Date(b.date).getTime();
+                })
                 .map((task) => (
                   <div
                     key={task.id}
@@ -196,7 +202,9 @@ export default function ContactDetailsPage() {
                           {task.title}
                         </p>
                       </div>
-                      <span className="text-xs font-semibold text-slate-400">{task.date}</span>
+                      <span className="text-xs font-semibold text-slate-400">
+                        {task.date || 'No date'}
+                      </span>
                     </div>
 
                     {/* Task details */}
