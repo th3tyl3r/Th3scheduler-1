@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Check, Palette } from 'lucide-react';
+import { ArrowLeft, Check, Palette, Pencil, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { loadTheme, saveTheme, applyTheme, DEFAULT_ACCENT } from '../../lib/theme';
+import { loadTheme, saveTheme, applyTheme, DEFAULT_ACCENT, loadDisplayName, saveDisplayName } from '../../lib/theme';
 
 const PRESETS = [
   { label: 'Cyan',   color: '#06b6d4' },
@@ -25,15 +25,36 @@ export default function ProfilePage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Display name state
+  const [displayName, setDisplayName] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameSaveSuccess, setNameSaveSuccess] = useState(false);
+
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { window.location.href = '/login'; return; }
       setUser(user);
+
+      // Load theme
       const color = await loadTheme(user.id);
       setSelected(color);
       setSaved(color);
       applyTheme(color);
+
+      // Load display name — fall back to user metadata then email
+      const savedName = await loadDisplayName(user.id);
+      const fallback =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split('@')[0] ||
+        'User';
+      const name = savedName || fallback;
+      setDisplayName(name);
+      setNameInput(name);
+
       setLoading(false);
     };
     init();
@@ -41,7 +62,7 @@ export default function ProfilePage() {
 
   const handleSelect = (color: string) => {
     setSelected(color);
-    applyTheme(color); // live preview
+    applyTheme(color);
   };
 
   const handleSave = async () => {
@@ -54,18 +75,28 @@ export default function ProfilePage() {
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
+  const handleSaveName = async () => {
+    if (!user || !nameInput.trim()) return;
+    setSavingName(true);
+    await saveDisplayName(user.id, nameInput.trim());
+    setDisplayName(nameInput.trim());
+    setSavingName(false);
+    setEditingName(false);
+    setNameSaveSuccess(true);
+    setTimeout(() => setNameSaveSuccess(false), 2000);
+  };
+
+  const handleCancelEdit = () => {
+    setNameInput(displayName);
+    setEditingName(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.href = '/';
   };
 
   if (loading) return <div className="min-h-screen bg-slate-950" />;
-
-  const displayName =
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
-    user.email?.split('@')[0] ||
-    'User';
 
   const hasChanges = selected !== saved;
 
@@ -100,15 +131,68 @@ export default function ProfilePage() {
           <section className="mb-8">
             <h2 className="text-lg font-semibold text-slate-200 mb-4 tracking-wide">Account</h2>
             <div className="bg-slate-800 border border-[var(--accent)]/20 p-5 space-y-3">
+
+              {/* Email row */}
               <div className="flex justify-between items-center">
                 <span className="text-sm text-slate-400">Email</span>
                 <span className="text-sm text-slate-200">{user.email}</span>
               </div>
+
               <div className="border-t border-slate-700" />
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-400">Name</span>
-                <span className="text-sm text-slate-200">{displayName}</span>
+
+              {/* Name row */}
+              <div className="flex justify-between items-center gap-3">
+                <span className="text-sm text-slate-400 shrink-0">Display Name</span>
+                {editingName ? (
+                  <div className="flex items-center gap-2 flex-1 justify-end">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveName();
+                        if (e.key === 'Escape') handleCancelEdit();
+                      }}
+                      autoFocus
+                      className="bg-slate-900 text-slate-100 text-sm px-3 py-1.5 outline-none border-b-2 w-36 transition-colors"
+                      style={{ borderColor: 'var(--accent)' }}
+                      maxLength={30}
+                    />
+                    <button
+                      onClick={handleSaveName}
+                      disabled={savingName || !nameInput.trim()}
+                      className="p-1.5 rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
+                      style={{ color: 'var(--accent)' }}
+                      title="Save name"
+                    >
+                      <Check size={16} strokeWidth={3} />
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="p-1.5 rounded-full text-slate-500 hover:text-slate-300 transition-colors"
+                      title="Cancel"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {nameSaveSuccess && (
+                      <span className="text-xs text-emerald-400 font-semibold">Saved!</span>
+                    )}
+                    <span className="text-sm text-slate-200">{displayName}</span>
+                    <button
+                      onClick={() => setEditingName(true)}
+                      className="p-1.5 rounded-full text-slate-500 hover:opacity-70 transition-opacity"
+                      style={{ color: 'var(--accent)' }}
+                      title="Edit name"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
+
             </div>
           </section>
 
@@ -204,7 +288,7 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {/* Save button */}
+          {/* Save color button */}
           <button
             onClick={handleSave}
             disabled={saving || !hasChanges}

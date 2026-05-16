@@ -37,7 +37,6 @@ const toMinutes = (time: string) => {
   return h * 60 + m;
 };
 
-// Returns a Set of task IDs that overlap with at least one other task on the same day
 const getOverlappingIds = (dayTasks: Task[]): Set<string> => {
   const timed = dayTasks.filter((t) => t.startTime && t.endTime);
   const overlapping = new Set<string>();
@@ -64,7 +63,10 @@ export default function CalendarPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  const currentDate = useMemo(() => new Date(selectedDate), [selectedDate]);
+  const currentDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }, [selectedDate]);
   const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate]);
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
   const hours = Array.from({ length: 16 }, (_, index) => 6 + index);
@@ -109,27 +111,76 @@ export default function CalendarPage() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-black text-white px-4 py-6 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(6,182,212,0.18),_transparent_25%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.25),_transparent_18%)] pointer-events-none" />
-      <div className="relative z-10 w-full max-w-[1180px] rounded-[36px] border border-cyan-500/40 bg-slate-950/95 p-6 sm:p-8 shadow-[0_0_60px_rgba(6,182,212,0.12)]">
+      {/* Background gradient using CSS variables */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle at top, rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.18), transparent 25%), radial-gradient(circle at bottom right, rgba(15,23,42,0.25), transparent 18%)',
+        }}
+      />
+
+      <div
+        className="relative z-10 w-full max-w-[1180px] rounded-[36px] border bg-slate-950/95 p-6 sm:p-8"
+        style={{
+          borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
+          boxShadow: '0 0 60px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.12)',
+        }}
+      >
+        {/* Top header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white [text-shadow:0_0_10px_rgba(34,211,238,0.3)]">Weekly Schedule</h1>
+            <h1
+              className="text-3xl sm:text-4xl font-bold text-white"
+              style={{ textShadow: '0 0 10px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            >
+              Weekly Schedule
+            </h1>
             <p className="mt-2 text-sm text-slate-400 sm:text-base">
               Horizontal weekly view with hours on the left and details on the right.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/dashboard" className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:border-cyan-400 hover:bg-slate-800 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+            <Link
+              href="/dashboard"
+              className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--accent)';
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = '';
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '';
+              }}
+            >
               Back to Dashboard
             </Link>
-            <Link href="/create-task" className="rounded-3xl bg-cyan-500 px-4 py-3 text-sm font-bold text-black transition hover:bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)] hover:shadow-[0_0_25px_rgba(34,211,238,0.8)]">
+            <Link
+              href="/create-task"
+              className="rounded-3xl px-4 py-3 text-sm font-bold text-black transition"
+              style={{
+                backgroundColor: 'var(--accent)',
+                boxShadow: '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5)',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 0 25px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.8)';
+                (e.currentTarget as HTMLAnchorElement).style.opacity = '0.9';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5)';
+                (e.currentTarget as HTMLAnchorElement).style.opacity = '1';
+              }}
+            >
               Create New Task
             </Link>
           </div>
         </div>
 
+        {/* Week info + controls */}
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="rounded-3xl border border-cyan-500/40 bg-slate-900 p-4 text-sm text-slate-300">
+          <div
+            className="rounded-3xl border bg-slate-900 p-4 text-sm text-slate-300"
+            style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' }}
+          >
             <div>Week: {weekLabel}</div>
             <div className="mt-1 text-slate-400">Tasks this week: {weekTaskCount}</div>
           </div>
@@ -137,7 +188,10 @@ export default function CalendarPage() {
           {/* Overlap legend */}
           <div className="flex items-center gap-4 text-xs text-slate-400">
             <span className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded-sm bg-cyan-500" />
+              <span
+                className="inline-block w-3 h-3 rounded-sm"
+                style={{ backgroundColor: 'var(--accent)' }}
+              />
               Normal
             </span>
             <span className="flex items-center gap-2">
@@ -150,30 +204,50 @@ export default function CalendarPage() {
             <button
               type="button"
               onClick={() => moveWeek(-1)}
-              className="rounded-3xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800 border border-slate-700 hover:border-cyan-400"
+              className="rounded-3xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800 border border-slate-700"
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
             >
               Previous Week
             </button>
             <button
               type="button"
               onClick={() => setSelectedDate(formatIsoDate(new Date()))}
-              className="rounded-3xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800 border border-slate-700 hover:border-cyan-400"
+              className="rounded-3xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800 border border-slate-700"
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
             >
               Today
             </button>
             <input
               type="date"
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/40"
+              onChange={(e) => { const val = e.target.value; if (val && !isNaN(new Date(val).getTime())) setSelectedDate(val); }}
+              className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white outline-none"
+              onFocus={e => {
+                e.currentTarget.style.borderColor = 'var(--accent)';
+                e.currentTarget.style.boxShadow = '0 0 0 1px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)';
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = '';
+                e.currentTarget.style.boxShadow = '';
+              }}
             />
           </div>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-          <div className="rounded-3xl border border-cyan-500/40 bg-slate-950 p-4 shadow-[0_0_20px_rgba(6,182,212,0.05)]">
+          {/* Calendar grid */}
+          <div
+            className="rounded-3xl border bg-slate-950 p-4"
+            style={{
+              borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
+              boxShadow: '0 0 20px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.05)',
+            }}
+          >
             <div className="overflow-x-auto rounded-3xl border border-slate-800 bg-slate-950">
               <div className="min-w-[1040px]">
+                {/* Day headers */}
                 <div className="grid grid-cols-[96px_repeat(7,minmax(0,1fr))] text-xs">
                   <div className="border-b border-slate-800 bg-slate-950" />
                   {weekDates.map((date) => (
@@ -184,6 +258,7 @@ export default function CalendarPage() {
                   ))}
                 </div>
 
+                {/* Time grid */}
                 <div className="grid grid-cols-[96px_repeat(7,minmax(0,1fr))] text-sm">
                   <div className="bg-slate-950">
                     {hours.map((hour) => (
@@ -224,15 +299,25 @@ export default function CalendarPage() {
                                 key={task.id}
                                 type="button"
                                 onClick={() => setActiveTaskId(task.id)}
-                                className={`absolute left-2 right-2 rounded-3xl border p-3 text-left text-sm shadow transition
-                                  ${isOverlapping
-                                    ? 'border-amber-400 bg-amber-400/90 text-slate-900 shadow-[0_0_15px_rgba(251,191,36,0.5)] hover:bg-amber-300 hover:shadow-[0_0_25px_rgba(251,191,36,0.8)]'
-                                    : 'border-cyan-400 bg-cyan-500/90 text-black shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:bg-cyan-400 hover:shadow-[0_0_25px_rgba(34,211,238,0.7)]'
-                                  }`}
-                                style={{ top: `${startOffset}px`, height: `${Math.max(blockHeight, 48)}px` }}
+                                className="absolute left-2 right-2 rounded-3xl border p-3 text-left text-sm shadow transition"
+                                style={{
+                                  top: `${startOffset}px`,
+                                  height: `${Math.max(blockHeight, 48)}px`,
+                                  ...(isOverlapping ? {
+                                    borderColor: '#fbbf24',
+                                    backgroundColor: 'rgba(251,191,36,0.9)',
+                                    color: 'rgb(15,23,42)',
+                                    boxShadow: '0 0 15px rgba(251,191,36,0.5)',
+                                  } : {
+                                    borderColor: 'var(--accent)',
+                                    backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
+                                    color: 'black',
+                                    boxShadow: '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
+                                  }),
+                                }}
                               >
                                 <div className="font-bold truncate">{task.title}</div>
-                                <div className={`mt-1 text-xs font-semibold ${isOverlapping ? 'text-slate-700' : 'text-black/70'}`}>
+                                <div className="mt-1 text-xs font-semibold opacity-70">
                                   {task.startTime} - {task.endTime}
                                 </div>
                                 {isOverlapping && (
@@ -249,32 +334,34 @@ export default function CalendarPage() {
             </div>
           </div>
 
+          {/* Sidebar */}
           <aside>
-            <div className="sticky top-6 rounded-3xl border border-cyan-500/40 bg-slate-950 p-6 shadow-[0_0_20px_rgba(6,182,212,0.05)]">
+            <div
+              className="sticky top-6 rounded-3xl border bg-slate-950 p-6"
+              style={{
+                borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
+                boxShadow: '0 0 20px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.05)',
+              }}
+            >
               <h2 className="text-xl font-semibold text-white">Job details</h2>
               {activeTask ? (
                 <div className="mt-5 space-y-4">
-                  <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-cyan-400">Task</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{activeTask.title}</p>
-                    <p className="mt-1 text-sm text-slate-400">{activeTask.notes || 'No extra notes.'}</p>
-                  </div>
-                  <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-cyan-400">When</p>
-                    <p className="mt-2 text-base text-white">{activeTask.date}</p>
-                    <p className="text-sm text-slate-400">{activeTask.startTime} - {activeTask.endTime}</p>
-                  </div>
-                  <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-cyan-400">Work</p>
-                    <p className="mt-2 text-base text-white">{activeTask.jobType || 'Not specified'}</p>
-                    <p className="mt-3 text-sm text-slate-400">{activeTask.address || 'No address specified'}</p>
-                  </div>
-                  <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-cyan-400">Contact</p>
-                    <p className="mt-2 text-base text-white">{activeContact?.name || 'Unknown'}</p>
-                    <p className="mt-1 text-sm text-slate-400">{activeContact?.email || 'No email'}</p>
-                    <p className="mt-1 text-sm text-slate-400">{activeContact?.phone || 'No phone'}</p>
-                  </div>
+                  {[
+                    { label: 'Task', content: <><p className="mt-2 text-lg font-semibold text-white">{activeTask.title}</p><p className="mt-1 text-sm text-slate-400">{activeTask.notes || 'No extra notes.'}</p></> },
+                    { label: 'When', content: <><p className="mt-2 text-base text-white">{activeTask.date}</p><p className="text-sm text-slate-400">{activeTask.startTime} - {activeTask.endTime}</p></> },
+                    { label: 'Work', content: <><p className="mt-2 text-base text-white">{activeTask.jobType || 'Not specified'}</p><p className="mt-3 text-sm text-slate-400">{activeTask.address || 'No address specified'}</p></> },
+                    { label: 'Contact', content: <><p className="mt-2 text-base text-white">{activeContact?.name || 'Unknown'}</p><p className="mt-1 text-sm text-slate-400">{activeContact?.email || 'No email'}</p><p className="mt-1 text-sm text-slate-400">{activeContact?.phone || 'No phone'}</p></> },
+                  ].map(({ label, content }) => (
+                    <div key={label} className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
+                      <p
+                        className="text-sm uppercase tracking-[0.18em]"
+                        style={{ color: 'var(--accent)' }}
+                      >
+                        {label}
+                      </p>
+                      {content}
+                    </div>
+                  ))}
 
                   {confirmDelete ? (
                     <div className="rounded-3xl border border-red-500/50 bg-red-950/40 p-4 flex flex-col gap-3">
