@@ -57,6 +57,46 @@ const getOverlappingIds = (dayTasks: Task[]): Set<string> => {
   return overlapping;
 };
 
+// Returns the visual style for a task block based on status + overlap
+const getTaskStyle = (status: string | undefined, isOverlapping: boolean) => {
+  // Overlapping takes highest visual priority regardless of status
+  if (isOverlapping) {
+    return {
+      borderColor: '#fbbf24',
+      backgroundColor: 'rgba(251,191,36,0.88)',
+      color: 'rgb(15,23,42)',
+      boxShadow: '0 0 14px rgba(251,191,36,0.55)',
+      label: '⚠ Overlap',
+    };
+  }
+  if (status === 'completed') {
+    return {
+      borderColor: 'rgba(34,197,94,0.8)',
+      backgroundColor: 'rgba(34,197,94,0.82)',
+      color: 'rgb(2,26,12)',
+      boxShadow: '0 0 14px rgba(34,197,94,0.4)',
+      label: '✓ Completed',
+    };
+  }
+  if (status === 'in-progress') {
+    return {
+      borderColor: 'rgba(251,146,60,0.9)',
+      backgroundColor: 'rgba(251,146,60,0.85)',
+      color: 'rgb(28,10,2)',
+      boxShadow: '0 0 14px rgba(251,146,60,0.45)',
+      label: '▶ Started',
+    };
+  }
+  // Default: pending / normal — use accent CSS variable
+  return {
+    borderColor: 'var(--accent)',
+    backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
+    color: 'black',
+    boxShadow: '0 0 14px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
+    label: null,
+  };
+};
+
 export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string>(formatIsoDate(new Date()));
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -109,13 +149,21 @@ export default function CalendarPage() {
     setConfirmDelete(false);
   };
 
+  // Legend items
+  const legend = [
+    { label: 'Scheduled', color: 'var(--accent)', bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.85)' },
+    { label: 'Started',   color: 'rgba(251,146,60,1)', bg: 'rgba(251,146,60,0.85)' },
+    { label: 'Completed', color: 'rgba(34,197,94,1)',  bg: 'rgba(34,197,94,0.82)' },
+    { label: 'Overlap',   color: '#fbbf24',            bg: 'rgba(251,191,36,0.88)' },
+  ];
+
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-black text-white px-4 py-6 sm:px-6 lg:px-8">
-      {/* Background gradient using CSS variables */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(circle at top, rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.18), transparent 25%), radial-gradient(circle at bottom right, rgba(15,23,42,0.25), transparent 18%)',
+          background:
+            'radial-gradient(circle at top, rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.18), transparent 25%), radial-gradient(circle at bottom right, rgba(15,23,42,0.25), transparent 18%)',
         }}
       />
 
@@ -185,19 +233,17 @@ export default function CalendarPage() {
             <div className="mt-1 text-slate-400">Tasks this week: {weekTaskCount}</div>
           </div>
 
-          {/* Overlap legend */}
-          <div className="flex items-center gap-4 text-xs text-slate-400">
-            <span className="flex items-center gap-2">
-              <span
-                className="inline-block w-3 h-3 rounded-sm"
-                style={{ backgroundColor: 'var(--accent)' }}
-              />
-              Normal
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded-sm bg-amber-400" />
-              Overlapping
-            </span>
+          {/* Legend — all 4 states */}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {legend.map(({ label, bg }) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
+                  style={{ backgroundColor: bg }}
+                />
+                {label}
+              </span>
+            ))}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -222,7 +268,10 @@ export default function CalendarPage() {
             <input
               type="date"
               value={selectedDate}
-              onChange={(e) => { const val = e.target.value; if (val && !isNaN(new Date(val).getTime())) setSelectedDate(val); }}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val && !isNaN(new Date(val).getTime())) setSelectedDate(val);
+              }}
               className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white outline-none"
               onFocus={e => {
                 e.currentTarget.style.borderColor = 'var(--accent)';
@@ -251,7 +300,10 @@ export default function CalendarPage() {
                 <div className="grid grid-cols-[96px_repeat(7,minmax(0,1fr))] text-xs">
                   <div className="border-b border-slate-800 bg-slate-950" />
                   {weekDates.map((date) => (
-                    <div key={date.toISOString()} className="border-l border-b border-slate-800 px-3 py-3 text-center text-sm uppercase tracking-[0.18em] text-slate-400">
+                    <div
+                      key={date.toISOString()}
+                      className="border-l border-b border-slate-800 px-3 py-3 text-center text-sm uppercase tracking-[0.18em] text-slate-400"
+                    >
                       <div>{date.toLocaleDateString('en-US', { weekday: 'short' })}</div>
                       <div className="mt-2 text-2xl font-semibold text-white">{date.getDate()}</div>
                     </div>
@@ -276,7 +328,10 @@ export default function CalendarPage() {
                     const overlappingIds = getOverlappingIds(dayTasks);
 
                     return (
-                      <div key={`column-${date.toISOString()}`} className="relative border-l border-slate-800 bg-slate-950/70">
+                      <div
+                        key={`column-${date.toISOString()}`}
+                        className="relative border-l border-slate-800 bg-slate-950/70"
+                      >
                         {hours.map((hour) => (
                           <div
                             key={`${date.toISOString()}-${hour}`}
@@ -286,42 +341,43 @@ export default function CalendarPage() {
 
                         {dayTasks
                           .filter((task) => task.startTime && task.endTime)
-                          .sort((a, b) => Number(a.startTime!.replace(':', '')) - Number(b.startTime!.replace(':', '')))
+                          .sort(
+                            (a, b) =>
+                              Number(a.startTime!.replace(':', '')) -
+                              Number(b.startTime!.replace(':', '')),
+                          )
                           .map((task) => {
                             const [startHour, startMinute] = task.startTime!.split(':').map(Number);
                             const [endHour, endMinute] = task.endTime!.split(':').map(Number);
                             const startOffset = (startHour - 6) * 60 + startMinute;
-                            const blockHeight = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+                            const blockHeight =
+                              endHour * 60 + endMinute - (startHour * 60 + startMinute);
                             const isOverlapping = overlappingIds.has(task.id);
+                            const style = getTaskStyle(task.status, isOverlapping);
 
                             return (
                               <button
                                 key={task.id}
                                 type="button"
                                 onClick={() => setActiveTaskId(task.id)}
-                                className="absolute left-2 right-2 rounded-3xl border p-3 text-left text-sm shadow transition"
+                                className="absolute left-2 right-2 rounded-3xl border p-3 text-left text-sm shadow transition hover:brightness-110"
                                 style={{
                                   top: `${startOffset}px`,
                                   height: `${Math.max(blockHeight, 48)}px`,
-                                  ...(isOverlapping ? {
-                                    borderColor: '#fbbf24',
-                                    backgroundColor: 'rgba(251,191,36,0.9)',
-                                    color: 'rgb(15,23,42)',
-                                    boxShadow: '0 0 15px rgba(251,191,36,0.5)',
-                                  } : {
-                                    borderColor: 'var(--accent)',
-                                    backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
-                                    color: 'black',
-                                    boxShadow: '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)',
-                                  }),
+                                  borderColor: style.borderColor,
+                                  backgroundColor: style.backgroundColor,
+                                  color: style.color,
+                                  boxShadow: style.boxShadow,
                                 }}
                               >
                                 <div className="font-bold truncate">{task.title}</div>
                                 <div className="mt-1 text-xs font-semibold opacity-70">
-                                  {task.startTime} - {task.endTime}
+                                  {task.startTime} – {task.endTime}
                                 </div>
-                                {isOverlapping && (
-                                  <div className="mt-1 text-[10px] font-bold text-slate-700 uppercase tracking-wide">⚠ Overlap</div>
+                                {style.label && (
+                                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wide opacity-80">
+                                    {style.label}
+                                  </div>
                                 )}
                               </button>
                             );
@@ -346,11 +402,64 @@ export default function CalendarPage() {
               <h2 className="text-xl font-semibold text-white">Job details</h2>
               {activeTask ? (
                 <div className="mt-5 space-y-4">
+                  {/* Status pill */}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
+                      style={(() => {
+                        if (activeTask.status === 'completed')
+                          return { backgroundColor: 'rgba(34,197,94,0.18)', color: 'rgb(34,197,94)', border: '1px solid rgba(34,197,94,0.4)' };
+                        if (activeTask.status === 'in-progress')
+                          return { backgroundColor: 'rgba(251,146,60,0.18)', color: 'rgb(251,146,60)', border: '1px solid rgba(251,146,60,0.4)' };
+                        return { backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' };
+                      })()}
+                    >
+                      {activeTask.status === 'completed' ? '✓ Completed' :
+                       activeTask.status === 'in-progress' ? '▶ Started' :
+                       '● Scheduled'}
+                    </span>
+                  </div>
+
                   {[
-                    { label: 'Task', content: <><p className="mt-2 text-lg font-semibold text-white">{activeTask.title}</p><p className="mt-1 text-sm text-slate-400">{activeTask.notes || 'No extra notes.'}</p></> },
-                    { label: 'When', content: <><p className="mt-2 text-base text-white">{activeTask.date}</p><p className="text-sm text-slate-400">{activeTask.startTime} - {activeTask.endTime}</p></> },
-                    { label: 'Work', content: <><p className="mt-2 text-base text-white">{activeTask.jobType || 'Not specified'}</p><p className="mt-3 text-sm text-slate-400">{activeTask.address || 'No address specified'}</p></> },
-                    { label: 'Contact', content: <><p className="mt-2 text-base text-white">{activeContact?.name || 'Unknown'}</p><p className="mt-1 text-sm text-slate-400">{activeContact?.email || 'No email'}</p><p className="mt-1 text-sm text-slate-400">{activeContact?.phone || 'No phone'}</p></> },
+                    {
+                      label: 'Task',
+                      content: (
+                        <>
+                          <p className="mt-2 text-lg font-semibold text-white">{activeTask.title}</p>
+                          <p className="mt-1 text-sm text-slate-400">{activeTask.notes || 'No extra notes.'}</p>
+                        </>
+                      ),
+                    },
+                    {
+                      label: 'When',
+                      content: (
+                        <>
+                          <p className="mt-2 text-base text-white">{activeTask.date}</p>
+                          <p className="text-sm text-slate-400">
+                            {activeTask.startTime} – {activeTask.endTime}
+                          </p>
+                        </>
+                      ),
+                    },
+                    {
+                      label: 'Work',
+                      content: (
+                        <>
+                          <p className="mt-2 text-base text-white">{activeTask.jobType || 'Not specified'}</p>
+                          <p className="mt-3 text-sm text-slate-400">{activeTask.address || 'No address specified'}</p>
+                        </>
+                      ),
+                    },
+                    {
+                      label: 'Contact',
+                      content: (
+                        <>
+                          <p className="mt-2 text-base text-white">{activeContact?.name || 'Unknown'}</p>
+                          <p className="mt-1 text-sm text-slate-400">{activeContact?.email || 'No email'}</p>
+                          <p className="mt-1 text-sm text-slate-400">{activeContact?.phone || 'No phone'}</p>
+                        </>
+                      ),
+                    },
                   ].map(({ label, content }) => (
                     <div key={label} className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
                       <p

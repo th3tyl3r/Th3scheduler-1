@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Calendar, Plus, Users, Clock, ArrowRight, User, LogOut } from 'lucide-react';
+import { Calendar, Plus, Users, Clock, ArrowRight, User, LogOut, Play, CheckCircle, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Task, Contact, loadData } from '../../lib/storage';
+import { Task, Contact, loadData, saveData } from '../../lib/storage';
 import { loadDisplayName } from '../../lib/theme';
 
 export default function DashboardPage() {
@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [displayName, setDisplayName] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const getUser = async () => {
@@ -20,7 +21,6 @@ export default function DashboardPage() {
       setUser(user);
 
       if (user) {
-        // Try to load saved display name, fall back to auth metadata
         const savedName = await loadDisplayName(user.id);
         const fallback =
           user.user_metadata?.full_name ||
@@ -43,6 +43,42 @@ export default function DashboardPage() {
     window.location.href = '/';
   };
 
+  // Update task status both locally and in Supabase
+  const handleStatusUpdate = async (taskId: string, newStatus: 'in-progress' | 'completed') => {
+    setActionLoading(taskId + newStatus);
+
+    // Optimistic local update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+
+    // Persist to local storage
+    const data = loadData();
+    const updated = data.tasks.map((t: Task) => t.id === taskId ? { ...t, status: newStatus } : t);
+    saveData({ ...data, tasks: updated });
+
+    // Sync to Supabase
+    await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+
+    setActionLoading(null);
+  };
+
+  // Delete task both locally and in Supabase
+  const handleDelete = async (taskId: string) => {
+    if (!window.confirm('Delete this task?')) return;
+    setActionLoading(taskId + 'delete');
+
+    // Optimistic local update
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+
+    // Persist to local storage
+    const data = loadData();
+    saveData({ ...data, tasks: data.tasks.filter((t: Task) => t.id !== taskId) });
+
+    // Sync to Supabase
+    await supabase.from('tasks').delete().eq('id', taskId);
+
+    setActionLoading(null);
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-slate-950" />;
   }
@@ -52,17 +88,18 @@ export default function DashboardPage() {
     return null;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Use local date to avoid UTC timezone mismatch (CDT = UTC-5)
+  const today = new Date().toLocaleDateString('en-CA');
   const todaysTasks = tasks.filter(task => task.date === today);
 
-  const getContactName = (contactId: string) => {
+  const getContactName = (contactId?: string) => {
+    if (!contactId) return null;
     const contact = contacts.find(c => c.id === contactId);
-    return contact ? contact.name : 'Unknown Contact';
+    return contact ? contact.name : null;
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex justify-center items-start sm:py-10">
-      {/* Mobile App Container */}
       <div
         className="w-full max-w-md bg-slate-900 min-h-screen sm:min-h-[850px] sm:border relative overflow-hidden flex flex-col"
         style={{
@@ -70,8 +107,6 @@ export default function DashboardPage() {
           boxShadow: '0 0 40px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)',
         }}
       >
-
-        {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto pb-32">
 
           {/* Header */}
@@ -174,73 +209,153 @@ export default function DashboardPage() {
                 ) : (
                   todaysTasks.map((task, index) => {
                     const isFirst = index === 0;
+                    const contactName = getContactName(task.contactId);
+                    const isCompleted = task.status === 'completed';
+                    const isStarted = task.status === 'in-progress';
+                    const isDeleting = actionLoading === task.id + 'delete';
+                    const isUpdating =
+                      actionLoading === task.id + 'in-progress' ||
+                      actionLoading === task.id + 'completed';
+
                     return (
                       <div
                         key={task.id}
-                        className="bg-slate-800 p-5 border flex gap-4 items-center transition-colors"
-                        style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}
+                        className="bg-slate-800 border flex flex-col transition-all duration-200"
+                        style={{
+                          borderColor: isCompleted
+                            ? 'rgba(34,197,94,0.4)'
+                            : isStarted
+                            ? 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5)'
+                            : 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)',
+                          opacity: isDeleting ? 0.4 : 1,
+                        }}
                       >
-                        {/* Time / Index box */}
-                        <div
-                          className="flex flex-col items-center justify-center px-3 py-2 min-w-[70px] bg-slate-950 border"
-                          style={{
-                            borderColor: isFirst
-                              ? 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)'
-                              : 'rgb(51,65,85)',
-                          }}
-                        >
-                          {(task as any).time ? (
-                            <>
-                              <span
-                                className="text-sm font-bold"
-                                style={{
-                                  color: isFirst ? 'var(--accent)' : 'rgb(203,213,225)',
-                                  filter: isFirst ? 'drop-shadow(0 0 5px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5))' : 'none',
-                                }}
-                              >
-                                {(task as any).time.split(':').slice(0, 2).join(':')}
-                              </span>
-                              <span
-                                className="text-xs font-semibold"
-                                style={{ color: isFirst ? 'var(--accent)' : 'rgb(100,116,139)', opacity: isFirst ? 0.6 : 1 }}
-                              >
-                                {parseInt((task as any).time) >= 12 ? 'PM' : 'AM'}
-                              </span>
-                            </>
-                          ) : (
-                            <span
-                              className="text-lg font-bold"
-                              style={{ color: isFirst ? 'var(--accent)' : 'rgb(148,163,184)' }}
-                            >
-                              #{index + 1}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Task details */}
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-100 text-lg truncate">{task.title}</h3>
-                          <p className="text-slate-400 text-sm mb-1 truncate">
-                            {getContactName(task.contactId)}
-                          </p>
-                          {task.address && (
-                            <p className="text-slate-500 text-xs mb-2 truncate">{task.address}</p>
-                          )}
+                        {/* Card body: time + info */}
+                        <div className="p-5 flex gap-4 items-center">
+                          {/* Time / Index box */}
                           <div
-                            className="flex items-center gap-1 text-xs font-bold px-2 py-1 inline-flex"
-                            style={isFirst ? {
-                              color: 'rgb(8,47,73)',
-                              backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
-                              boxShadow: '0 0 10px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)',
-                            } : {
-                              color: 'rgb(203,213,225)',
-                              backgroundColor: 'rgb(51,65,85)',
-                              border: '1px solid rgb(71,85,105)',
+                            className="flex flex-col items-center justify-center px-3 py-2 min-w-[70px] bg-slate-950 border flex-shrink-0"
+                            style={{
+                              borderColor: isFirst
+                                ? 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)'
+                                : 'rgb(51,65,85)',
                             }}
                           >
-                            <Clock size={12} />
-                            {(task as any).status || (isFirst ? 'In Progress' : 'Scheduled')}
+                            {task.startTime ? (
+                              <>
+                                <span
+                                  className="text-sm font-bold"
+                                  style={{
+                                    color: isFirst ? 'var(--accent)' : 'rgb(203,213,225)',
+                                    filter: isFirst
+                                      ? 'drop-shadow(0 0 5px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5))'
+                                      : 'none',
+                                  }}
+                                >
+                                  {task.startTime.split(':').slice(0, 2).join(':')}
+                                </span>
+                                <span
+                                  className="text-xs font-semibold"
+                                  style={{
+                                    color: isFirst ? 'var(--accent)' : 'rgb(100,116,139)',
+                                    opacity: isFirst ? 0.6 : 1,
+                                  }}
+                                >
+                                  {parseInt(task.startTime) >= 12 ? 'PM' : 'AM'}
+                                </span>
+                              </>
+                            ) : (
+                              <span
+                                className="text-lg font-bold"
+                                style={{ color: isFirst ? 'var(--accent)' : 'rgb(148,163,184)' }}
+                              >
+                                #{index + 1}
+                              </span>
+                            )}
                           </div>
+
+                          {/* Task details */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-slate-100 text-lg truncate">{task.title}</h3>
+                            {contactName && (
+                              <p className="text-slate-400 text-sm mb-1 truncate">{contactName}</p>
+                            )}
+                            {task.address && (
+                              <p className="text-slate-500 text-xs mb-2 truncate">{task.address}</p>
+                            )}
+                            {/* Status badge */}
+                            <div
+                              className="flex items-center gap-1 text-xs font-bold px-2 py-1 inline-flex"
+                              style={
+                                isCompleted
+                                  ? { color: '#052e16', backgroundColor: 'rgba(34,197,94,0.85)' }
+                                  : isStarted
+                                  ? {
+                                      color: 'rgb(8,47,73)',
+                                      backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
+                                      boxShadow: '0 0 10px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)',
+                                    }
+                                  : {
+                                      color: 'rgb(203,213,225)',
+                                      backgroundColor: 'rgb(51,65,85)',
+                                      border: '1px solid rgb(71,85,105)',
+                                    }
+                              }
+                            >
+                              <Clock size={12} />
+                              {isCompleted ? 'Completed' : isStarted ? 'In Progress' : task.status || 'Scheduled'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ── Action buttons ── */}
+                        <div
+                          className="flex border-t"
+                          style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)' }}
+                        >
+                          {/* Started */}
+                          <button
+                            onClick={() => handleStatusUpdate(task.id, 'in-progress')}
+                            disabled={isStarted || isUpdating || isDeleting}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-r disabled:cursor-not-allowed"
+                            style={{
+                              borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)',
+                              color: isStarted ? 'var(--accent)' : 'rgb(148,163,184)',
+                              backgroundColor: isStarted
+                                ? 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.1)'
+                                : 'transparent',
+                              opacity: isStarted || isUpdating ? 0.5 : 1,
+                            }}
+                          >
+                            <Play size={11} fill={isStarted ? 'currentColor' : 'none'} />
+                            Started
+                          </button>
+
+                          {/* Completed */}
+                          <button
+                            onClick={() => handleStatusUpdate(task.id, 'completed')}
+                            disabled={isCompleted || isUpdating || isDeleting}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-r disabled:cursor-not-allowed"
+                            style={{
+                              borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)',
+                              color: isCompleted ? 'rgb(34,197,94)' : 'rgb(148,163,184)',
+                              backgroundColor: isCompleted ? 'rgba(34,197,94,0.1)' : 'transparent',
+                              opacity: isCompleted || isUpdating ? 0.5 : 1,
+                            }}
+                          >
+                            <CheckCircle size={11} fill={isCompleted ? 'currentColor' : 'none'} />
+                            Completed
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => handleDelete(task.id)}
+                            disabled={isDeleting || isUpdating}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-950/30 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Trash2 size={11} />
+                            Delete
+                          </button>
                         </div>
                       </div>
                     );
@@ -301,7 +416,6 @@ export default function DashboardPage() {
             <span className="text-[10px] font-medium tracking-wider">PROFILE</span>
           </Link>
         </nav>
-
       </div>
     </div>
   );

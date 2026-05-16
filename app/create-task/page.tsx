@@ -13,9 +13,9 @@ export default function CreateTaskPage() {
   const [title, setTitle] = useState('');
   const [jobType, setJobType] = useState('');
   const [address, setAddress] = useState('');
-  const [startTime, setStartTime] = useState('08:00');
-  const [endTime, setEndTime] = useState('10:00');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<'pending' | 'completed' | 'in-progress'>('pending');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
@@ -26,12 +26,14 @@ export default function CreateTaskPage() {
     e.preventDefault();
     setError('');
 
-    if (!name || !email || !title || !jobType || !address || !date || !startTime || !endTime) {
-      setError('Please fill in name, email, title, job type, address, date, and times.');
+    // Only title is required — everything else is optional
+    if (!title.trim()) {
+      setError('Please enter a task title.');
       return;
     }
 
-    if (startTime >= endTime) {
+    // Only validate time order if BOTH times are provided
+    if (startTime && endTime && startTime >= endTime) {
       setError('End time must be after start time.');
       return;
     }
@@ -39,23 +41,28 @@ export default function CreateTaskPage() {
     setLoading(true);
 
     try {
-      const contact = upsertContact({
-        id: crypto.randomUUID(),
-        name,
-        email,
-        phone,
-      });
+      // Only create/upsert a contact if at least a name or email was provided
+      let contactId: string | undefined;
+      if (name.trim() || email.trim()) {
+        const contact = upsertContact({
+          id: crypto.randomUUID(),
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+        });
+        contactId = contact.id;
+      }
 
       addTask({
         id: crypto.randomUUID(),
-        title,
-        contactId: contact.id,
-        jobType,
-        address,
-        startTime,
-        endTime,
-        date,
-        notes,
+        title: title.trim(),
+        contactId,
+        jobType: jobType.trim() || undefined,
+        address: address.trim() || undefined,
+        startTime: startTime || undefined,
+        endTime: endTime || undefined,
+        date: date || undefined,
+        notes: notes.trim() || undefined,
         status,
         priority,
         createdAt: new Date().toISOString(),
@@ -76,7 +83,7 @@ export default function CreateTaskPage() {
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold text-white">Create New Task</h1>
             <p className="mt-2 text-sm text-slate-400 sm:text-base">
-              Add a new task and contact. This will sync to contacts and calendar.
+              Add a new task and contact. Fields marked <span className="text-cyan-400">*</span> are required.
             </p>
           </div>
           <Link href="/dashboard" className="rounded-3xl bg-slate-900 px-4 py-3 text-sm text-white transition hover:bg-slate-800 border border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)]">
@@ -85,9 +92,24 @@ export default function CreateTaskPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Task Title — required */}
+          <div>
+            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-2">
+              Task Title <span className="text-cyan-400">*</span>
+            </label>
+            <input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Replace wiring at customer site"
+              className="w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-white placeholder-slate-500 shadow-inner shadow-black/20 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/40 focus:outline-none"
+            />
+          </div>
+
+          {/* Contact info — all optional */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-2">
-              Contact Name
+              Contact Name <span className="text-slate-500 text-xs">(optional)</span>
             </label>
             <input
               id="name"
@@ -101,7 +123,7 @@ export default function CreateTaskPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
-                Email
+                Email <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="email"
@@ -114,7 +136,7 @@ export default function CreateTaskPage() {
             </div>
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-slate-300 mb-2">
-                Phone
+                Phone <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="phone"
@@ -126,35 +148,22 @@ export default function CreateTaskPage() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-2">
-              Task Title
-            </label>
-            <input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Replace wiring at customer site"
-              className="w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-white placeholder-slate-500 shadow-inner shadow-black/20 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/40 focus:outline-none"
-            />
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="jobType" className="block text-sm font-medium text-slate-300 mb-2">
-                Job Type
+                Job Type <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="jobType"
                 value={jobType}
                 onChange={(e) => setJobType(e.target.value)}
-                placeholder="Electrical repair, inspection, installation"
+                placeholder="Electrical repair, inspection…"
                 className="w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-white placeholder-slate-500 shadow-inner shadow-black/20 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/40 focus:outline-none"
               />
             </div>
             <div>
               <label htmlFor="address" className="block text-sm font-medium text-slate-300 mb-2">
-                Address
+                Address <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="address"
@@ -169,7 +178,7 @@ export default function CreateTaskPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="startTime" className="block text-sm font-medium text-slate-300 mb-2">
-                Start Time
+                Start Time <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="startTime"
@@ -181,7 +190,7 @@ export default function CreateTaskPage() {
             </div>
             <div>
               <label htmlFor="endTime" className="block text-sm font-medium text-slate-300 mb-2">
-                End Time
+                End Time <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="endTime"
@@ -196,7 +205,7 @@ export default function CreateTaskPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="date" className="block text-sm font-medium text-slate-300 mb-2">
-                Date
+                Date <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="date"
@@ -208,7 +217,7 @@ export default function CreateTaskPage() {
             </div>
             <div>
               <label htmlFor="notes" className="block text-sm font-medium text-slate-300 mb-2">
-                Notes
+                Notes <span className="text-slate-500 text-xs">(optional)</span>
               </label>
               <input
                 id="notes"
@@ -253,7 +262,11 @@ export default function CreateTaskPage() {
             </div>
           </div>
 
-          {error && <div className="rounded-3xl border border-red-700 bg-red-950/80 p-4 text-sm text-red-200">{error}</div>}
+          {error && (
+            <div className="rounded-3xl border border-red-700 bg-red-950/80 p-4 text-sm text-red-200">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
