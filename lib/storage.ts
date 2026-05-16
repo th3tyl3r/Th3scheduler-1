@@ -8,12 +8,12 @@ export type Contact = {
 export type Task = {
   id: string;
   title: string;
-  contactId: string;
-  date: string; // YYYY-MM-DD
+  contactId?: string;
+  date?: string;
   jobType?: string;
   address?: string;
-  startTime?: string; // HH:mm
-  endTime?: string; // HH:mm
+  startTime?: string;
+  endTime?: string;
   notes?: string;
   status?: 'pending' | 'completed' | 'in-progress';
   priority?: 'low' | 'medium' | 'high';
