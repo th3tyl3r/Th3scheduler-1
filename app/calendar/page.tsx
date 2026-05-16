@@ -57,9 +57,7 @@ const getOverlappingIds = (dayTasks: Task[]): Set<string> => {
   return overlapping;
 };
 
-// Returns the visual style for a task block based on status + overlap
 const getTaskStyle = (status: string | undefined, isOverlapping: boolean) => {
-  // Overlapping takes highest visual priority regardless of status
   if (isOverlapping) {
     return {
       borderColor: '#fbbf24',
@@ -87,7 +85,6 @@ const getTaskStyle = (status: string | undefined, isOverlapping: boolean) => {
       label: '▶ Started',
     };
   }
-  // Default: pending / normal — use accent CSS variable
   return {
     borderColor: 'var(--accent)',
     backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.9)',
@@ -125,13 +122,15 @@ export default function CalendarPage() {
     setSelectedDate(formatIsoDate(next));
   };
 
+  // ✅ Fixed: guard against task.date being undefined
   const tasksForDay = (date: Date) => {
     const key = formatIsoDate(date);
-    return tasks.filter((task) => normalizeTaskDate(task.date) === key);
+    return tasks.filter((task) => task.date && normalizeTaskDate(task.date) === key);
   };
 
+  // ✅ Fixed: guard against task.date being undefined
   const weekTaskCount = tasks.filter((task) =>
-    weekDates.some((date) => normalizeTaskDate(task.date) === formatIsoDate(date)),
+    task.date && weekDates.some((date) => normalizeTaskDate(task.date!) === formatIsoDate(date)),
   ).length;
 
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -149,7 +148,6 @@ export default function CalendarPage() {
     setConfirmDelete(false);
   };
 
-  // Legend items
   const legend = [
     { label: 'Scheduled', color: 'var(--accent)', bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.85)' },
     { label: 'Started',   color: 'rgba(251,146,60,1)', bg: 'rgba(251,146,60,0.85)' },
@@ -174,7 +172,6 @@ export default function CalendarPage() {
           boxShadow: '0 0 60px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.12)',
         }}
       >
-        {/* Top header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1
@@ -223,7 +220,6 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Week info + controls */}
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div
             className="rounded-3xl border bg-slate-900 p-4 text-sm text-slate-300"
@@ -233,7 +229,6 @@ export default function CalendarPage() {
             <div className="mt-1 text-slate-400">Tasks this week: {weekTaskCount}</div>
           </div>
 
-          {/* Legend — all 4 states */}
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
             {legend.map(({ label, bg }) => (
               <span key={label} className="flex items-center gap-1.5">
@@ -286,7 +281,6 @@ export default function CalendarPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-          {/* Calendar grid */}
           <div
             className="rounded-3xl border bg-slate-950 p-4"
             style={{
@@ -296,7 +290,6 @@ export default function CalendarPage() {
           >
             <div className="overflow-x-auto rounded-3xl border border-slate-800 bg-slate-950">
               <div className="min-w-[1040px]">
-                {/* Day headers */}
                 <div className="grid grid-cols-[96px_repeat(7,minmax(0,1fr))] text-xs">
                   <div className="border-b border-slate-800 bg-slate-950" />
                   {weekDates.map((date) => (
@@ -310,7 +303,6 @@ export default function CalendarPage() {
                   ))}
                 </div>
 
-                {/* Time grid */}
                 <div className="grid grid-cols-[96px_repeat(7,minmax(0,1fr))] text-sm">
                   <div className="bg-slate-950">
                     {hours.map((hour) => (
@@ -390,7 +382,6 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* Sidebar */}
           <aside>
             <div
               className="sticky top-6 rounded-3xl border bg-slate-950 p-6"
@@ -402,7 +393,6 @@ export default function CalendarPage() {
               <h2 className="text-xl font-semibold text-white">Job details</h2>
               {activeTask ? (
                 <div className="mt-5 space-y-4">
-                  {/* Status pill */}
                   <div className="flex items-center gap-2">
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
@@ -434,9 +424,11 @@ export default function CalendarPage() {
                       label: 'When',
                       content: (
                         <>
-                          <p className="mt-2 text-base text-white">{activeTask.date}</p>
+                          <p className="mt-2 text-base text-white">{activeTask.date || 'No date set'}</p>
                           <p className="text-sm text-slate-400">
-                            {activeTask.startTime} – {activeTask.endTime}
+                            {activeTask.startTime && activeTask.endTime
+                              ? `${activeTask.startTime} – ${activeTask.endTime}`
+                              : 'No time set'}
                           </p>
                         </>
                       ),
