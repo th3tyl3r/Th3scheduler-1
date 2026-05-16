@@ -2,10 +2,308 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Calendar, Plus, Users, Clock, ArrowRight, User, LogOut, Play, CheckCircle, Trash2 } from 'lucide-react';
+import {
+  Calendar, Plus, Users, Clock, ArrowRight, User, LogOut,
+  Play, CheckCircle, Trash2, Pencil, X, DollarSign,
+  TrendingUp, TrendingDown,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Task, Contact, loadData, saveData } from '../../lib/storage';
 import { loadDisplayName } from '../../lib/theme';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface BudgetEntry {
+  id: string;
+  user_id: string;
+  amount: number;          // positive = income, negative = expense
+  label: string;
+  category: string;
+  date: string;            // 'YYYY-MM-DD'
+  contact_id?: string | null;
+  task_id?: string | null;
+  created_at?: string;
+}
+
+// ─── Edit-task modal ──────────────────────────────────────────────────────────
+
+interface EditModalProps {
+  task: Task;
+  contacts: Contact[];
+  onClose: () => void;
+  onSave: (updated: Task) => void;
+}
+
+function EditTaskModal({ task, contacts, onClose, onSave }: EditModalProps) {
+  const [form, setForm] = useState({ ...task });
+  const [saving, setSaving] = useState(false);
+
+  const set = (k: keyof Task, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+
+    // Local storage
+    const data = loadData();
+    const updatedTasks = data.tasks.map((t: Task) => t.id === form.id ? form : t);
+    saveData({ ...data, tasks: updatedTasks });
+
+    // Supabase
+    await supabase.from('tasks').update({
+      title: form.title,
+      date: form.date,
+      start_time: form.startTime,
+      address: form.address,
+      contact_id: form.contactId,
+      status: form.status,
+      notes: form.notes,
+    }).eq('id', form.id);
+
+    onSave(form);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      style={{ backgroundColor: 'rgba(2,6,23,0.85)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-md bg-slate-900 border overflow-hidden"
+        style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' }}
+      >
+        {/* Modal header */}
+        <div
+          className="flex items-center justify-between px-5 py-4 border-b"
+          style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}
+        >
+          <h2 className="text-lg font-bold text-slate-100">Edit Task</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Modal body */}
+        <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
+          {/* Title */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Title</label>
+            <input
+              value={form.title}
+              onChange={e => set('title', e.target.value)}
+              className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            />
+          </div>
+
+          {/* Date & Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Date</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => set('date', e.target.value)}
+                className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Start Time</label>
+              <input
+                type="time"
+                value={form.startTime || ''}
+                onChange={e => set('startTime', e.target.value)}
+                className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+              />
+            </div>
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Address</label>
+            <input
+              value={form.address || ''}
+              onChange={e => set('address', e.target.value)}
+              className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            />
+          </div>
+
+          {/* Client */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Client</label>
+            <select
+              value={form.contactId || ''}
+              onChange={e => set('contactId', e.target.value)}
+              className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            >
+              <option value="">No client</option>
+              {contacts.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Status</label>
+            <select
+              value={form.status || 'scheduled'}
+              onChange={e => set('status', e.target.value)}
+              className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            >
+              <option value="scheduled">Scheduled</option>
+              <option value="in-progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Notes</label>
+            <textarea
+              value={form.notes || ''}
+              onChange={e => set('notes', e.target.value)}
+              rows={3}
+              className="w-full bg-slate-800 border text-slate-100 px-3 py-2 text-sm outline-none focus:border-[var(--accent)] resize-none"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}
+            />
+          </div>
+        </div>
+
+        {/* Modal footer */}
+        <div
+          className="px-5 py-4 border-t flex gap-3"
+          style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}
+        >
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 text-sm font-semibold bg-slate-800 text-slate-300 border hover:bg-slate-700 transition-colors"
+            style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-2.5 text-sm font-bold text-slate-950 transition-colors disabled:opacity-50"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Budget summary widget ────────────────────────────────────────────────────
+
+function BudgetWidget({ userId }: { userId: string }) {
+  const [entries, setEntries] = useState<BudgetEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    supabase
+      .from('budget_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .then(({ data }) => {
+        setEntries(data || []);
+        setLoading(false);
+      });
+  }, [userId]);
+
+  const income  = entries.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+  const expense = entries.filter(e => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
+  const net     = income - expense;
+
+  if (loading) return null;
+
+  const fmt = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+
+  return (
+    <section className="mb-8">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold text-slate-200 tracking-wide">Today's Budget</h2>
+        <Link
+          href="/budget"
+          className="text-sm font-medium flex items-center gap-1"
+          style={{
+            color: 'var(--accent)',
+            filter: 'drop-shadow(0 0 5px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.8))',
+          }}
+        >
+          View all <ArrowRight size={16} />
+        </Link>
+      </div>
+
+      <div
+        className="bg-slate-800 border p-5"
+        style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}
+      >
+        {/* Net total */}
+        <div className="flex items-end justify-between mb-4">
+          <div>
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Net Today</p>
+            <p
+              className="text-3xl font-bold"
+              style={{ color: net >= 0 ? 'rgb(34,197,94)' : 'rgb(239,68,68)' }}
+            >
+              {net >= 0 ? '' : '-'}{fmt(Math.abs(net))}
+            </p>
+          </div>
+          <Link
+            href="/budget?new=1"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-950"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Plus size={12} /> Add Entry
+          </Link>
+        </div>
+
+        {/* Income / Expense row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div
+            className="bg-slate-900 border p-3 flex items-center gap-2"
+            style={{ borderColor: 'rgba(34,197,94,0.25)' }}
+          >
+            <TrendingUp size={16} className="text-green-400 flex-shrink-0" />
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider">Income</p>
+              <p className="text-sm font-bold text-green-400">{fmt(income)}</p>
+            </div>
+          </div>
+          <div
+            className="bg-slate-900 border p-3 flex items-center gap-2"
+            style={{ borderColor: 'rgba(239,68,68,0.25)' }}
+          >
+            <TrendingDown size={16} className="text-red-400 flex-shrink-0" />
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider">Expenses</p>
+              <p className="text-sm font-bold text-red-400">{fmt(expense)}</p>
+            </div>
+          </div>
+        </div>
+
+        {entries.length === 0 && (
+          <p className="text-xs text-slate-500 text-center mt-3">No budget entries for today</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
@@ -14,12 +312,12 @@ export default function DashboardPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [displayName, setDisplayName] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
-
       if (user) {
         const savedName = await loadDisplayName(user.id);
         const fallback =
@@ -29,7 +327,6 @@ export default function DashboardPage() {
           'User';
         setDisplayName(savedName || fallback);
       }
-
       setLoading(false);
     };
     getUser();
@@ -43,52 +340,33 @@ export default function DashboardPage() {
     window.location.href = '/';
   };
 
-  // Update task status both locally and in Supabase
   const handleStatusUpdate = async (taskId: string, newStatus: 'in-progress' | 'completed') => {
     setActionLoading(taskId + newStatus);
-
-    // Optimistic local update
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-
-    // Persist to local storage
     const data = loadData();
     const updated = data.tasks.map((t: Task) => t.id === taskId ? { ...t, status: newStatus } : t);
     saveData({ ...data, tasks: updated });
-
-    // Sync to Supabase
     await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
-
     setActionLoading(null);
   };
 
-  // Delete task both locally and in Supabase
   const handleDelete = async (taskId: string) => {
     if (!window.confirm('Delete this task?')) return;
     setActionLoading(taskId + 'delete');
-
-    // Optimistic local update
     setTasks(prev => prev.filter(t => t.id !== taskId));
-
-    // Persist to local storage
     const data = loadData();
     saveData({ ...data, tasks: data.tasks.filter((t: Task) => t.id !== taskId) });
-
-    // Sync to Supabase
     await supabase.from('tasks').delete().eq('id', taskId);
-
     setActionLoading(null);
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-slate-950" />;
-  }
+  const handleTaskSaved = (updated: Task) => {
+    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+  };
 
-  if (!user) {
-    window.location.href = '/login';
-    return null;
-  }
+  if (loading) return <div className="min-h-screen bg-slate-950" />;
+  if (!user) { window.location.href = '/login'; return null; }
 
-  // Use local date to avoid UTC timezone mismatch (CDT = UTC-5)
   const today = new Date().toLocaleDateString('en-CA');
   const todaysTasks = tasks.filter(task => task.date === today);
 
@@ -100,6 +378,16 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex justify-center items-start sm:py-10">
+      {/* Edit modal */}
+      {editingTask && (
+        <EditTaskModal
+          task={editingTask}
+          contacts={contacts}
+          onClose={() => setEditingTask(null)}
+          onSave={handleTaskSaved}
+        />
+      )}
+
       <div
         className="w-full max-w-md bg-slate-900 min-h-screen sm:min-h-[850px] sm:border relative overflow-hidden flex flex-col"
         style={{
@@ -174,6 +462,9 @@ export default function DashboardPage() {
               </div>
             </section>
 
+            {/* Budget Widget */}
+            <BudgetWidget userId={user.id} />
+
             {/* Today's Schedule */}
             <section>
               <div className="flex justify-between items-center mb-4">
@@ -230,7 +521,7 @@ export default function DashboardPage() {
                           opacity: isDeleting ? 0.4 : 1,
                         }}
                       >
-                        {/* Card body: time + info */}
+                        {/* Card body */}
                         <div className="p-5 flex gap-4 items-center">
                           {/* Time / Index box */}
                           <div
@@ -283,7 +574,6 @@ export default function DashboardPage() {
                             {task.address && (
                               <p className="text-slate-500 text-xs mb-2 truncate">{task.address}</p>
                             )}
-                            {/* Status badge */}
                             <div
                               className="flex items-center gap-1 text-xs font-bold px-2 py-1 inline-flex"
                               style={
@@ -308,11 +598,22 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* ── Action buttons ── */}
+                        {/* Action buttons */}
                         <div
                           className="flex border-t"
                           style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)' }}
                         >
+                          {/* Edit */}
+                          <button
+                            onClick={() => setEditingTask(task)}
+                            disabled={isDeleting || isUpdating}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-700/40 transition-colors border-r disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)' }}
+                          >
+                            <Pencil size={11} />
+                            Edit
+                          </button>
+
                           {/* Started */}
                           <button
                             onClick={() => handleStatusUpdate(task.id, 'in-progress')}
@@ -344,7 +645,7 @@ export default function DashboardPage() {
                             }}
                           >
                             <CheckCircle size={11} fill={isCompleted ? 'currentColor' : 'none'} />
-                            Completed
+                            Done
                           </button>
 
                           {/* Delete */}
@@ -368,7 +669,7 @@ export default function DashboardPage() {
 
         {/* Bottom Navigation */}
         <nav
-          className="absolute bottom-0 w-full bg-slate-900 border-t px-6 py-4 flex justify-between items-center pb-8 sm:pb-6"
+          className="absolute bottom-0 w-full bg-slate-900 border-t px-4 py-4 flex justify-between items-center pb-8 sm:pb-6"
           style={{
             borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)',
             boxShadow: '0 -10px 30px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.05)',
@@ -382,12 +683,12 @@ export default function DashboardPage() {
               filter: 'drop-shadow(0 0 8px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.6))',
             }}
           >
-            <Calendar size={24} />
+            <Calendar size={22} />
             <span className="text-[10px] font-bold tracking-wider">TODAY</span>
           </Link>
 
           <Link href="/manage-contacts" className="flex flex-col items-center gap-1 text-slate-500 hover:text-[var(--accent)] transition-colors">
-            <Users size={24} />
+            <Users size={22} />
             <span className="text-[10px] font-medium tracking-wider">CLIENTS</span>
           </Link>
 
@@ -406,13 +707,13 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <Link href="/history" className="flex flex-col items-center gap-1 text-slate-500 hover:text-[var(--accent)] transition-colors">
-            <Clock size={24} />
-            <span className="text-[10px] font-medium tracking-wider">HISTORY</span>
+          <Link href="/budget" className="flex flex-col items-center gap-1 text-slate-500 hover:text-[var(--accent)] transition-colors">
+            <DollarSign size={22} />
+            <span className="text-[10px] font-medium tracking-wider">BUDGET</span>
           </Link>
 
           <Link href="/profile" className="flex flex-col items-center gap-1 text-slate-500 hover:text-[var(--accent)] transition-colors">
-            <User size={24} />
+            <User size={22} />
             <span className="text-[10px] font-medium tracking-wider">PROFILE</span>
           </Link>
         </nav>
