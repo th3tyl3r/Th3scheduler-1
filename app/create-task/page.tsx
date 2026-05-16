@@ -56,7 +56,7 @@ export default function CreateTaskPage() {
       addTask({
         id: crypto.randomUUID(),
         title: title.trim(),
-        contactId,
+        contactId: contactId ?? '',
         jobType: jobType.trim() || undefined,
         address: address.trim() || undefined,
         startTime: startTime || undefined,
