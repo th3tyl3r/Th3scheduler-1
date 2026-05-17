@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -35,7 +35,18 @@ interface Job {
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
+// UTC-based formatter — only used for Supabase query range strings
 const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+// FIX: Local-date formatter — used everywhere we set or compare selectedDate.
+// toISOString() outputs UTC, so in US timezones midnight local = previous day UTC,
+// causing getWeekStart to resolve to the wrong Sunday. fmtLocal avoids this entirely.
+const fmtLocal = (d: Date) => {
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
+};
 
 const getWeekStart = (d: Date) => {
   const r = new Date(d);
@@ -57,28 +68,26 @@ const toMinutes = (time: string) => {
 };
 
 const normalizeDate = (v: string) => {
-  const p = new Date(v);
-  return isNaN(p.getTime()) ? v.slice(0, 10) : fmt(p);
+  // FIX: append T00:00:00 so date-only strings are parsed in local time, not UTC
+  const p = new Date(v + 'T00:00:00');
+  return isNaN(p.getTime()) ? v.slice(0, 10) : fmtLocal(p);
 };
 
 // ─── Recurring occurrence generator ──────────────────────────────────────────
-// Given a real job and the 7 dates of the current week, returns virtual Job
-// objects for any dates the job should recur on that week (excluding its
-// original date, which is already in the DB).
 
 function getRecurringOccurrences(job: Job, weekDates: Date[]): Job[] {
   if (!job.repeating || !job.repeat_interval || !job.date) return [];
 
-  const origin   = new Date(job.date + 'T00:00:00');
-  const endDate  = job.repeat_months
+  const origin  = new Date(job.date + 'T00:00:00');
+  const endDate = job.repeat_months
     ? new Date(origin.getFullYear(), origin.getMonth() + job.repeat_months, origin.getDate())
     : null;
 
   const results: Job[] = [];
 
   for (const weekDay of weekDates) {
-    const dateStr = fmt(weekDay);
-    if (dateStr === job.date) continue; // original already exists in DB
+    const dateStr = fmtLocal(weekDay);
+    if (dateStr === job.date) continue;
     if (weekDay < origin)    continue;
     if (endDate && weekDay > endDate) continue;
 
@@ -152,17 +161,20 @@ const getOverlappingIds = (jobs: Job[]): Set<number> => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const [selectedDate,    setSelectedDate]    = useState(fmt(new Date()));
-  const [jobs,            setJobs]            = useState<Job[]>([]);
-  const [loading,         setLoading]         = useState(true);
-  const [activeJob,       setActiveJob]       = useState<Job | null>(null);
-  const [confirmDelete,   setConfirmDelete]   = useState(false);
-  const [confirmStop,     setConfirmStop]     = useState(false);
-  const [stopping,        setStopping]        = useState(false);
-  const [deleting,        setDeleting]        = useState(false);
+  // FIX 1: fmtLocal so today initialises from local time, not UTC
+  const [selectedDate,  setSelectedDate]  = useState(fmtLocal(new Date()));
+  const [jobs,          setJobs]          = useState<Job[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [activeJob,     setActiveJob]     = useState<Job | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmStop,   setConfirmStop]   = useState(false);
+  const [stopping,      setStopping]      = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
 
+  // FIX 2: append T00:00:00 so selectedDate string is parsed as local midnight.
+  // new Date('2026-05-17') is UTC midnight → May 16 in US timezones → wrong week.
   const currentDate = useMemo(() => {
-    const d = new Date(selectedDate);
+    const d = new Date(selectedDate + 'T00:00:00');
     return isNaN(d.getTime()) ? new Date() : d;
   }, [selectedDate]);
 
@@ -172,10 +184,12 @@ export default function CalendarPage() {
 
   const weekLabel = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
+  // FIX 3: fmtLocal in moveWeek so the resulting date string is always local,
+  // not shifted back a day by toISOString()'s UTC conversion
   const moveWeek = (offset: number) => {
     const next = new Date(weekStart);
     next.setDate(next.getDate() + offset * 7);
-    setSelectedDate(fmt(next));
+    setSelectedDate(fmtLocal(next));
   };
 
   // ── Fetch jobs from Supabase ───────────────────────────────────────────────
@@ -183,7 +197,6 @@ export default function CalendarPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { window.location.href = '/login'; return; }
 
-    // Fetch a wider range: 4 weeks back, 8 weeks forward to cover recurring generation
     const rangeStart = new Date(weekStart); rangeStart.setDate(rangeStart.getDate() - 28);
     const rangeEnd   = new Date(weekStart); rangeEnd.setDate(rangeEnd.getDate() + 56);
 
@@ -202,15 +215,14 @@ export default function CalendarPage() {
 
   // ── Build display jobs: real + generated occurrences ──────────────────────
   const displayJobs = useMemo(() => {
-    const real      = jobs.filter(j => j.date && weekDates.some(d => normalizeDate(j.date!) === fmt(d)));
+    const real      = jobs.filter(j => j.date && weekDates.some(d => normalizeDate(j.date!) === fmtLocal(d)));
     const generated = jobs.flatMap(j => getRecurringOccurrences(j, weekDates));
-    // De-dupe: don't show a generated occurrence if a real entry already exists for that date+source
     const realKeys  = new Set(real.map(j => `${j.id}-${j.date}`));
     const filtered  = generated.filter(g => !realKeys.has(`${g.source_id}-${g.date}`));
     return [...real, ...filtered];
   }, [jobs, weekDates]);
 
-  const jobsForDay  = (date: Date) => displayJobs.filter(j => j.date && normalizeDate(j.date) === fmt(date));
+  const jobsForDay   = (date: Date) => displayJobs.filter(j => j.date && normalizeDate(j.date) === fmtLocal(date));
   const weekJobCount = displayJobs.length;
 
   // ── Stop recurring ─────────────────────────────────────────────────────────
@@ -233,7 +245,7 @@ export default function CalendarPage() {
 
   // ── Delete job ─────────────────────────────────────────────────────────────
   const handleDelete = async () => {
-    if (!activeJob || activeJob.is_generated) return; // can't delete virtual occurrences
+    if (!activeJob || activeJob.is_generated) return;
     setDeleting(true);
     const { error } = await supabase.from('jobs').delete().eq('id', activeJob.id);
     if (error) console.error('Delete error:', error);
@@ -246,11 +258,11 @@ export default function CalendarPage() {
   };
 
   const legend = [
-    { label: 'Scheduled',  bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.85)' },
-    { label: 'Started',    bg: 'rgba(251,146,60,0.85)' },
-    { label: 'Completed',  bg: 'rgba(34,197,94,0.82)'  },
-    { label: 'Overlap',    bg: 'rgba(251,191,36,0.88)' },
-    { label: 'Recurring',  bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.25)' },
+    { label: 'Scheduled', bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.85)' },
+    { label: 'Started',   bg: 'rgba(251,146,60,0.85)' },
+    { label: 'Completed', bg: 'rgba(34,197,94,0.82)'  },
+    { label: 'Overlap',   bg: 'rgba(251,191,36,0.88)' },
+    { label: 'Recurring', bg: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.25)' },
   ];
 
   const intervalLabel = (v?: string | null) =>
@@ -320,7 +332,7 @@ export default function CalendarPage() {
               onMouseLeave={e => (e.currentTarget.style.borderColor = '')}>
               <ChevronLeft size={15} /> Prev
             </button>
-            <button type="button" onClick={() => setSelectedDate(fmt(new Date()))}
+            <button type="button" onClick={() => setSelectedDate(fmtLocal(new Date()))}
               className="rounded-3xl bg-slate-900 px-3 py-2 text-sm text-white border border-slate-700 hover:bg-slate-800 transition"
               onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = '')}>
@@ -333,7 +345,7 @@ export default function CalendarPage() {
               Next <ChevronRight size={15} />
             </button>
             <input type="date" value={selectedDate}
-              onChange={e => { if (e.target.value && !isNaN(new Date(e.target.value).getTime())) setSelectedDate(e.target.value); }}
+              onChange={e => { if (e.target.value && !isNaN(new Date(e.target.value + 'T00:00:00').getTime())) setSelectedDate(e.target.value); }}
               className="rounded-3xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white outline-none"
               onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)'; }}
               onBlur={e =>  { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }} />
@@ -387,11 +399,11 @@ export default function CalendarPage() {
                           .filter(j => j.time)
                           .sort((a, b) => toMinutes(a.time!) - toMinutes(b.time!))
                           .map((job, idx) => {
-                            const [sh, sm]   = job.time!.split(':').map(Number);
-                            const startOff   = (sh - 6) * 60 + sm;
-                            const blockH     = Math.max(job.duration ?? 60, 48);
-                            const isOverlap  = overlappingIds.has(job.id);
-                            const style      = getTaskStyle(job.status, isOverlap, !!job.is_generated);
+                            const [sh, sm]  = job.time!.split(':').map(Number);
+                            const startOff  = (sh - 6) * 60 + sm;
+                            const blockH    = Math.max(job.duration ?? 60, 48);
+                            const isOverlap = overlappingIds.has(job.id);
+                            const style     = getTaskStyle(job.status, isOverlap, !!job.is_generated);
 
                             return (
                               <button key={`${job.id}-${job.date}-${idx}`} type="button"
