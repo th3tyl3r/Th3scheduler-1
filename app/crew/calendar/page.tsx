@@ -1703,7 +1703,7 @@ export default function CrewCalendarView() {
         date={panelDate}
         shiftTemplates={shifts}
         dayAssignments={getPanelAssignments()}
-        teamId={teamId ?? ""}
+        teamId={String(teamId ?? "")}
         onClose={closePanel}
         onSaved={fetchAll}
       />
