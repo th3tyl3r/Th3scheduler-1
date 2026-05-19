@@ -5,17 +5,19 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Plus, X, TrendingUp, TrendingDown, DollarSign,
   Pencil, Trash2, ChevronLeft, ChevronRight, User, Check,
-  RefreshCw, AlertCircle,
+  RefreshCw, AlertCircle, List, LayoutGrid, Users,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Contact, loadData } from '../../lib/storage';
+import ShareBudgetModal from '../components/ShareBudgetModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BudgetEntry {
   id: string; user_id: string; amount: number; label: string;
   category: string; date: string; job_id?: number | null;
-  customer_id?: number | null; recurring_id?: string | null; created_at?: string;
+  customer_id?: number | null; recurring_id?: string | null;
+  created_at?: string; is_paid?: boolean; paid_date?: string | null;
 }
 
 interface RecurringSchedule {
@@ -25,6 +27,14 @@ interface RecurringSchedule {
   start_date: string; end_date?: string | null;
   customer_id?: number | null; active: boolean; created_at?: string;
 }
+
+interface Partner {
+  id: string; owner_id: string; owner_email: string;
+  partner_id: string | null; partner_email: string;
+  status: 'pending' | 'accepted' | 'declined';
+}
+
+type ViewMode = 'list' | 'weekly';
 
 const FREQUENCIES: { value: RecurringSchedule['frequency']; label: string }[] = [
   { value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' },
@@ -168,17 +178,13 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
       <div className="w-full max-w-md bg-slate-900 border overflow-hidden"
         style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' }}>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b"
           style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
           <h2 className="text-lg font-bold text-slate-100">{entry ? 'Edit Entry' : 'Add Budget Entry'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-100"><X size={20} /></button>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-4 space-y-3 max-h-[78vh] overflow-y-auto">
-
-          {/* Income / Expense */}
           <div className="grid grid-cols-2 gap-2">
             {(['income', 'expense'] as const).map(t => (
               <button key={t} onClick={() => set('type', t)}
@@ -193,7 +199,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
             ))}
           </div>
 
-          {/* Amount */}
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Amount ($)</label>
             <input type="number" min="0" step="0.01" placeholder="0.00"
@@ -201,7 +206,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
               className={iClass} style={iStyle} />
           </div>
 
-          {/* Label */}
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">Label</label>
             <input placeholder="e.g. Supplies, Invoice #42, Rent"
@@ -209,7 +213,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
               className={iClass} style={iStyle} />
           </div>
 
-          {/* Category */}
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">
               Category <span className="text-slate-500 normal-case font-normal">(optional)</span>
@@ -219,7 +222,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
               className={iClass} style={iStyle} />
           </div>
 
-          {/* Date */}
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">
               {form.is_recurring ? 'Start Date' : 'Date'}
@@ -228,7 +230,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
               className={iClass} style={iStyle} />
           </div>
 
-          {/* Recurring */}
           <div className="border p-3 transition-all"
             style={{ borderColor: form.is_recurring ? 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.5)' : 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
             <button onClick={() => set('is_recurring', !form.is_recurring)}
@@ -264,7 +265,7 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">
-                    End Date <span className="text-slate-500 normal-case font-normal">(optional — leave blank to repeat forever)</span>
+                    End Date <span className="text-slate-500 normal-case font-normal">(optional)</span>
                   </label>
                   <input type="date" value={form.end_date}
                     onChange={e => set('end_date', e.target.value)}
@@ -275,14 +276,12 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
                   <AlertCircle size={12} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--accent)' }} />
                   <p className="text-[10px] text-slate-400 leading-relaxed">
                     Entries will be auto-created each period when you navigate to that month.
-                    Deleting one instance does not cancel the schedule — use the schedule pill on the main page to stop it.
                   </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Client */}
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">
               Link to Client <span className="text-slate-500 normal-case font-normal">(optional)</span>
@@ -297,7 +296,6 @@ function EntryModal({ entry, contacts, userId, defaultDate, schedules, onClose, 
           {error && <p className="text-red-400 text-xs">{error}</p>}
         </div>
 
-        {/* Footer */}
         <div className="px-5 py-4 border-t flex gap-3"
           style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
           <button onClick={onClose}
@@ -354,6 +352,239 @@ function CancelRecurringModal({ schedule, onConfirm, onClose }: {
   );
 }
 
+// ─── Entry Card (shared across views) ────────────────────────────────────────
+
+interface EntryCardProps {
+  entry: BudgetEntry; schedules: RecurringSchedule[];
+  contacts: Contact[]; deletingId: string | null;
+  isPartnerEntry?: boolean;
+  onEdit: (e: BudgetEntry) => void;
+  onDelete: (id: string) => void;
+  onTogglePaid: (id: string, paid: boolean) => void;
+}
+
+function EntryCard({ entry, schedules, contacts, deletingId, isPartnerEntry, onEdit, onDelete, onTogglePaid }: EntryCardProps) {
+  const isIncome      = entry.amount > 0;
+  const isPaid        = entry.is_paid ?? false;
+  const isDeleting    = deletingId === entry.id;
+  const contactName   = entry.customer_id
+    ? contacts.find(c => Number(c.id) === entry.customer_id)?.name ?? null : null;
+  const entrySchedule = entry.recurring_id
+    ? schedules.find(s => s.id === entry.recurring_id) : null;
+
+  const stripe    = isIncome ? 'rgb(34,197,94)' : 'rgb(239,68,68)';
+  const dimBorder = isIncome ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)';
+  const dimLine   = isIncome ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+
+  return (
+    <div className="bg-slate-800 border flex items-stretch transition-all"
+      style={{
+        borderColor: isPaid ? 'rgba(100,116,139,0.2)' : dimBorder,
+        opacity: isDeleting ? 0.4 : isPaid ? 0.65 : 1,
+      }}>
+      {/* Paid toggle stripe */}
+      <button
+        onClick={() => onTogglePaid(entry.id, !isPaid)}
+        title={isPaid ? 'Mark unpaid' : 'Mark paid'}
+        className="w-7 flex-shrink-0 flex items-center justify-center transition-all hover:opacity-80"
+        style={{
+          backgroundColor: isPaid ? 'rgba(100,116,139,0.4)' : stripe,
+          opacity: isPaid ? 1 : undefined,
+        }}>
+        {isPaid
+          ? <Check size={12} className="text-slate-300" />
+          : <div className="w-2 h-2 rounded-full bg-white/40" />
+        }
+      </button>
+
+      <div className="flex-1 px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className={`text-sm font-semibold truncate ${isPaid ? 'line-through text-slate-500' : 'text-slate-100'}`}>
+                {entry.label}
+              </p>
+              {isPaid && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-slate-700 text-slate-400 uppercase tracking-wider">
+                  PAID{entry.paid_date ? ` · ${new Date(entry.paid_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                </span>
+              )}
+              {entrySchedule && (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold flex-shrink-0"
+                  style={{ color: 'var(--accent)', backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.12)' }}>
+                  <RefreshCw size={8} /> {getFreqLabel(entrySchedule.frequency)}
+                </span>
+              )}
+            </div>
+            {entry.category && <p className="text-slate-400 text-xs truncate">{entry.category}</p>}
+            {isPartnerEntry && (
+              <p className="text-[10px] flex items-center gap-1 mt-0.5 text-slate-500">
+                <Users size={9} /> partner's entry
+              </p>
+            )}
+            {contactName && (
+              <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--accent)' }}>
+                <User size={10} /> {contactName}
+              </p>
+            )}
+          </div>
+          <p className="text-base font-bold flex-shrink-0"
+            style={{ color: isPaid ? 'rgb(100,116,139)' : stripe }}>
+            {isIncome ? '+' : '-'}{fmt(Math.abs(entry.amount))}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col border-l" style={{ borderColor: dimLine }}>
+        <button onClick={() => onEdit(entry)}
+          className="flex-1 px-3 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-700/40 border-b transition-colors"
+          style={{ borderColor: dimLine }}>
+          <Pencil size={13} />
+        </button>
+        <button onClick={() => onDelete(entry.id)} disabled={isDeleting}
+          className="flex-1 px-3 flex items-center justify-center text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-40">
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Weekly View ──────────────────────────────────────────────────────────────
+
+interface WeeklyViewProps {
+  entries: BudgetEntry[]; viewYear: number; viewMonth: number;
+  schedules: RecurringSchedule[]; contacts: Contact[]; deletingId: string | null;
+  userId: string;
+  onEdit: (e: BudgetEntry) => void; onDelete: (id: string) => void;
+  onTogglePaid: (id: string, paid: boolean) => void;
+  onAddForDate: (date: string) => void;
+}
+
+function WeeklyView({ entries, viewYear, viewMonth, schedules, contacts, deletingId, userId, onEdit, onDelete, onTogglePaid, onAddForDate }: WeeklyViewProps) {
+  const today = new Date().toLocaleDateString('en-CA');
+
+  // Build weeks for the month
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth + 1, 0);
+  const weeks: Date[][] = [];
+  let week: Date[] = [];
+
+  // Pad start
+  const startPad = firstDay.getDay(); // 0=Sun
+  for (let i = 0; i < startPad; i++) {
+    const d = new Date(viewYear, viewMonth, 1 - (startPad - i));
+    week.push(d);
+  }
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    week.push(new Date(viewYear, viewMonth, d));
+    if (week.length === 7) { weeks.push(week); week = []; }
+  }
+  if (week.length) {
+    while (week.length < 7) {
+      week.push(new Date(viewYear, viewMonth + 1, week.length - (7 - week.length)));
+    }
+    weeks.push(week);
+  }
+
+  const byDate: Record<string, BudgetEntry[]> = {};
+  entries.forEach(e => { (byDate[e.date] ??= []).push(e); });
+
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return (
+    <div className="space-y-4">
+      {/* Day header */}
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {DAY_LABELS.map(d => (
+          <div key={d} className="text-center text-[9px] font-bold text-slate-500 uppercase tracking-wider py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {weeks.map((wk, wi) => {
+        const weekEntries = wk.flatMap(d => byDate[d.toLocaleDateString('en-CA')] ?? []);
+        const weekIncome  = weekEntries.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+        const weekExpense = weekEntries.filter(e => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
+        const weekNet     = weekIncome - weekExpense;
+
+        return (
+          <div key={wi} className="border rounded-none"
+            style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.15)' }}>
+
+            {/* Day strip */}
+            <div className="grid grid-cols-7 gap-0.5 p-2 border-b"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.1)' }}>
+              {wk.map((d, di) => {
+                const ds         = d.toLocaleDateString('en-CA');
+                const inMonth    = d.getMonth() === viewMonth;
+                const isToday    = ds === today;
+                const dayEntries = byDate[ds] ?? [];
+                const hasPaid    = dayEntries.some(e => e.is_paid);
+                const hasUnpaid  = dayEntries.some(e => !e.is_paid && e.amount < 0);
+                const hasIncome  = dayEntries.some(e => e.amount > 0);
+
+                return (
+                  <button key={di} onClick={() => inMonth && onAddForDate(ds)}
+                    className="flex flex-col items-center gap-0.5 py-1.5 transition-colors hover:bg-slate-800"
+                    style={{ opacity: inMonth ? 1 : 0.25 }}>
+                    <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full
+                      ${isToday ? 'text-slate-950' : 'text-slate-300'}`}
+                      style={isToday ? { backgroundColor: 'var(--accent)' } : {}}>
+                      {d.getDate()}
+                    </span>
+                    <div className="flex gap-0.5">
+                      {hasIncome  && <div className="w-1.5 h-1.5 rounded-full bg-green-400" />}
+                      {hasUnpaid  && <div className="w-1.5 h-1.5 rounded-full bg-red-400" />}
+                      {hasPaid    && <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Week summary + entries */}
+            <div className="px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Week {wi + 1}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-green-400 font-semibold">{fmt(weekIncome)}</span>
+                  <span className="text-slate-600 text-[10px]">/</span>
+                  <span className="text-[10px] text-red-400 font-semibold">-{fmt(weekExpense)}</span>
+                  <span className="text-[10px] font-bold ml-1"
+                    style={{ color: weekNet >= 0 ? 'rgb(34,197,94)' : 'rgb(239,68,68)' }}>
+                    = {weekNet >= 0 ? '' : '-'}{fmt(Math.abs(weekNet))}
+                  </span>
+                </div>
+              </div>
+              {weekEntries.length > 0 ? (
+                <div className="space-y-1.5">
+                  {wk.map(d => {
+                    const ds = d.toLocaleDateString('en-CA');
+                    const de = byDate[ds] ?? [];
+                    if (!de.length || d.getMonth() !== viewMonth) return null;
+                    return de.map(entry => (
+                      <EntryCard key={entry.id} entry={entry} schedules={schedules}
+                        contacts={contacts} deletingId={deletingId}
+                        isPartnerEntry={entry.user_id !== userId}
+                        onEdit={onEdit} onDelete={onDelete} onTogglePaid={onTogglePaid} />
+                    ));
+                  })}
+                </div>
+              ) : (
+                <p className="text-slate-600 text-xs text-center py-2">No entries this week</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Budget Page ─────────────────────────────────────────────────────────
 
 export default function BudgetPage() {
@@ -363,15 +594,20 @@ export default function BudgetPage() {
   const [contacts,       setContacts]       = useState<Contact[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [showModal,      setShowModal]      = useState(false);
+  const [showShare,      setShowShare]      = useState(false);
   const [editingEntry,   setEditingEntry]   = useState<BudgetEntry | null>(null);
   const [deletingId,     setDeletingId]     = useState<string | null>(null);
   const [cancelSchedule, setCancelSchedule] = useState<RecurringSchedule | null>(null);
+  const [viewMode,       setViewMode]       = useState<ViewMode>('list');
+  const [addForDate,     setAddForDate]     = useState<string | null>(null);
+  const [partners,       setPartners]       = useState<Partner[]>([]);
+  const [pendingInvites, setPendingInvites] = useState(0);
 
   const now = new Date();
   const [viewYear,  setViewYear]  = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
 
-  const userRef = useRef<string | null>(null); // stable uid ref for month-change effect
+  const userRef = useRef<string | null>(null);
 
   const monthStart = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-CA');
   const monthEnd   = new Date(viewYear, viewMonth + 1, 0).toLocaleDateString('en-CA');
@@ -379,11 +615,9 @@ export default function BudgetPage() {
   const today      = new Date().toLocaleDateString('en-CA');
 
   const prevMonth = () => viewMonth === 0
-    ? (setViewYear(y => y - 1), setViewMonth(11))
-    : setViewMonth(m => m - 1);
+    ? (setViewYear(y => y - 1), setViewMonth(11)) : setViewMonth(m => m - 1);
   const nextMonth = () => viewMonth === 11
-    ? (setViewYear(y => y + 1), setViewMonth(0))
-    : setViewMonth(m => m + 1);
+    ? (setViewYear(y => y + 1), setViewMonth(0)) : setViewMonth(m => m + 1);
 
   const generateRecurring = useCallback(async (
     uid: string, activeSchedules: RecurringSchedule[], existing: BudgetEntry[],
@@ -395,7 +629,7 @@ export default function BudgetPage() {
           toInsert.push({
             user_id: uid, label: s.label, category: s.category, date: dateStr,
             amount: s.type === 'expense' ? -Math.abs(s.amount) : Math.abs(s.amount),
-            customer_id: s.customer_id ?? null, recurring_id: s.id,
+            customer_id: s.customer_id ?? null, recurring_id: s.id, is_paid: false,
           });
         }
       }
@@ -406,10 +640,37 @@ export default function BudgetPage() {
     return (data ?? []) as BudgetEntry[];
   }, [viewYear, viewMonth]);
 
-  const fetchAll = useCallback(async (uid: string) => {
+  const fetchAll = useCallback(async (uid: string, email?: string) => {
+    // Fetch accepted partners for this user
+    const { data: partnerData } = await supabase
+      .from('budget_partners')
+      .select('*')
+      .or(`owner_id.eq.${uid},partner_id.eq.${uid}`)
+      .eq('status', 'accepted');
+
+    const accepted = (partnerData ?? []) as Partner[];
+    setPartners(accepted);
+
+    // Pending invites sent TO this user
+    if (email) {
+      const { count } = await supabase
+        .from('budget_partners')
+        .select('*', { count: 'exact', head: true })
+        .eq('partner_email', email)
+        .eq('status', 'pending');
+      setPendingInvites(count ?? 0);
+    }
+
+    // Collect all user_ids whose entries we should fetch (self + accepted partners)
+    const partnerUserIds = accepted.map(p =>
+      p.owner_id === uid ? p.partner_id : p.owner_id
+    ).filter(Boolean) as string[];
+    const allUserIds = [uid, ...partnerUserIds];
+
     const [{ data: entryData, error: entryErr }, { data: scheduleData, error: scheduleErr }] =
       await Promise.all([
-        supabase.from('budget_entries').select('*').eq('user_id', uid)
+        supabase.from('budget_entries').select('*')
+          .in('user_id', allUserIds)
           .gte('date', monthStart).lte('date', monthEnd).order('date', { ascending: false }),
         supabase.from('recurring_schedules').select('*').eq('user_id', uid).eq('active', true),
       ]);
@@ -425,7 +686,6 @@ export default function BudgetPage() {
     setEntries([...fetched, ...generated].sort((a, b) => b.date.localeCompare(a.date)));
   }, [monthStart, monthEnd, generateRecurring]);
 
-  // Init once — auth, contacts, initial fetch, ?new=1 check
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -433,16 +693,15 @@ export default function BudgetPage() {
       setUser(user);
       userRef.current = user.id;
       setContacts(loadData().contacts || []);
-      await fetchAll(user.id);
+      await fetchAll(user.id, user.email);
       setLoading(false);
       if (typeof window !== 'undefined' && window.location.search.includes('new=1'))
         setShowModal(true);
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Refetch when month changes (never opens the modal)
   useEffect(() => {
-    if (userRef.current) fetchAll(userRef.current);
+    if (userRef.current) fetchAll(userRef.current, user?.email);
   }, [viewYear, viewMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (id: string) => {
@@ -452,6 +711,14 @@ export default function BudgetPage() {
     if (error) { console.error('Delete error:', error); setDeletingId(null); return; }
     setEntries(prev => prev.filter(e => e.id !== id));
     setDeletingId(null);
+  };
+
+  const handleTogglePaid = async (id: string, paid: boolean) => {
+    const paidDate = paid ? new Date().toLocaleDateString('en-CA') : null;
+    const { error } = await supabase.from('budget_entries')
+      .update({ is_paid: paid, paid_date: paidDate }).eq('id', id);
+    if (error) { console.error('Toggle paid error:', error); return; }
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, is_paid: paid, paid_date: paidDate } : e));
   };
 
   const handleCancelSchedule = async () => {
@@ -475,12 +742,16 @@ export default function BudgetPage() {
     setSchedules(prev => prev.find(x => x.id === s.id)
       ? prev.map(x => x.id === s.id ? s : x) : [...prev, s]);
 
-  const getContactName = (id?: number | null) =>
-    id ? contacts.find(c => Number(c.id) === id)?.name ?? null : null;
+  const openAddForDate = (date: string) => {
+    setAddForDate(date);
+    setShowModal(true);
+  };
 
   const income  = entries.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
   const expense = entries.filter(e => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
   const net     = income - expense;
+  const paidCount   = entries.filter(e => e.is_paid && e.amount < 0).length;
+  const unpaidCount = entries.filter(e => !e.is_paid && e.amount < 0).length;
 
   const grouped: Record<string, BudgetEntry[]> = {};
   entries.forEach(e => { (grouped[e.date] ??= []).push(e); });
@@ -491,15 +762,26 @@ export default function BudgetPage() {
 
   if (loading) return <div className="min-h-screen bg-slate-950" />;
 
+  const VIEW_MODES: { mode: ViewMode; icon: React.ReactNode; label: string }[] = [
+    { mode: 'list',   icon: <List size={14} />,       label: 'List' },
+    { mode: 'weekly', icon: <LayoutGrid size={14} />, label: 'Weekly' },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-950 flex justify-center items-start sm:py-10">
 
       {(showModal || editingEntry) && (
         <EntryModal
           entry={editingEntry} contacts={contacts} userId={user.id}
-          defaultDate={today} schedules={schedules}
-          onClose={() => { setShowModal(false); setEditingEntry(null); }}
+          defaultDate={addForDate || today} schedules={schedules}
+          onClose={() => { setShowModal(false); setEditingEntry(null); setAddForDate(null); }}
           onSaved={handleSaved} onScheduleAdded={handleScheduleAdded}
+        />
+      )}
+      {showShare && (
+        <ShareBudgetModal
+          userId={user.id} userEmail={user.email ?? ''}
+          onClose={() => { setShowShare(false); fetchAll(user.id, user.email); }}
         />
       )}
       {cancelSchedule && (
@@ -515,7 +797,7 @@ export default function BudgetPage() {
         <div className="flex-1 overflow-y-auto pb-24">
 
           {/* Header */}
-          <header className="bg-slate-900 px-6 pt-12 pb-6 border-b mb-6"
+          <header className="bg-slate-900 px-6 pt-12 pb-6 border-b mb-4"
             style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -527,25 +809,73 @@ export default function BudgetPage() {
                   <h1 className="text-2xl font-bold text-slate-100">Finance Tracker</h1>
                 </div>
               </div>
-              <button onClick={() => setShowModal(true)}
-                className="h-11 w-11 flex items-center justify-center text-slate-950 transition-colors"
-                style={{ backgroundColor: 'var(--accent)', boxShadow: '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' }}>
-                <Plus size={22} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Share / pending badge */}
+                <button onClick={() => setShowShare(true)}
+                  className="relative h-11 w-11 flex items-center justify-center border transition-colors hover:border-[var(--accent)] text-slate-400 hover:text-[var(--accent)]"
+                  style={{ borderColor: pendingInvites > 0 ? 'var(--accent)' : 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }}>
+                  <Users size={18} />
+                  {pendingInvites > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-slate-950"
+                      style={{ backgroundColor: 'var(--accent)' }}>
+                      {pendingInvites}
+                    </span>
+                  )}
+                </button>
+                <button onClick={() => { setAddForDate(null); setShowModal(true); }}
+                  className="h-11 w-11 flex items-center justify-center text-slate-950 transition-colors"
+                  style={{ backgroundColor: 'var(--accent)', boxShadow: '0 0 15px rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.4)' }}>
+                  <Plus size={22} />
+                </button>
+              </div>
             </div>
           </header>
 
           <main className="px-6">
 
-            {/* Month nav */}
-            <div className="flex items-center justify-between mb-5">
+            {/* Month nav + view toggle */}
+            <div className="flex items-center justify-between mb-4">
               <button onClick={prevMonth} className="text-slate-400 hover:text-slate-100 p-1"><ChevronLeft size={20} /></button>
               <h2 className="text-sm font-bold text-slate-200 tracking-wide">{monthLabel}</h2>
               <button onClick={nextMonth} className="text-slate-400 hover:text-slate-100 p-1"><ChevronRight size={20} /></button>
             </div>
 
+            {/* Active partner banner */}
+            {partners.length > 0 && (
+              <div className="mb-4 flex items-center gap-2 px-3 py-2 border"
+                style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)', backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.06)' }}>
+                <Users size={13} style={{ color: 'var(--accent)' }} className="flex-shrink-0" />
+                <p className="text-xs text-slate-300">
+                  Shared with{' '}
+                  {partners.map((p, i) => (
+                    <span key={p.id}>
+                      {i > 0 && ', '}
+                      <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                        {p.owner_id === user?.id ? p.partner_email : p.owner_email}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+              </div>
+            )}
+
+            {/* View mode toggle */}
+            <div className="flex gap-1 mb-4 border p-1"
+              style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)', backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.05)' }}>
+              {VIEW_MODES.map(({ mode, icon, label }) => (
+                <button key={mode} onClick={() => setViewMode(mode)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold transition-all"
+                  style={{
+                    backgroundColor: viewMode === mode ? 'var(--accent)' : 'transparent',
+                    color: viewMode === mode ? 'rgb(2,6,23)' : 'rgb(100,116,139)',
+                  }}>
+                  {icon} {label}
+                </button>
+              ))}
+            </div>
+
             {/* Summary cards */}
-            <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="col-span-3 bg-slate-800 border p-4 flex items-center justify-between"
                 style={{ borderColor: net >= 0 ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' }}>
                 <div>
@@ -572,14 +902,28 @@ export default function BudgetPage() {
               <div className="bg-slate-800 border p-3"
                 style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
                 <Check size={14} className="mb-1" style={{ color: 'var(--accent)' }} />
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Entries</p>
-                <p className="text-sm font-bold" style={{ color: 'var(--accent)' }}>{entries.length}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Paid</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--accent)' }}>
+                  {paidCount}<span className="text-slate-500 font-normal">/{paidCount + unpaidCount}</span>
+                </p>
               </div>
             </div>
 
+            {/* Bills due / unpaid callout */}
+            {unpaidCount > 0 && (
+              <div className="mb-4 flex items-center gap-2 px-3 py-2.5 border"
+                style={{ borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.07)' }}>
+                <AlertCircle size={13} className="text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-300 font-semibold">
+                  {unpaidCount} unpaid bill{unpaidCount !== 1 ? 's' : ''} this month
+                  <span className="font-normal text-red-400/70 ml-1">— tap the left stripe to mark paid</span>
+                </p>
+              </div>
+            )}
+
             {/* Active recurring strip */}
             {schedules.length > 0 && (
-              <div className="mb-5">
+              <div className="mb-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
                   Active Recurring — tap to cancel
                 </p>
@@ -595,91 +939,59 @@ export default function BudgetPage() {
               </div>
             )}
 
-            {/* Entry list */}
-            {sortedDates.length === 0 ? (
-              <div className="bg-slate-800 border p-10 flex flex-col items-center justify-center gap-3"
-                style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
-                <DollarSign size={32} style={{ color: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }} />
-                <p className="text-slate-400 text-sm">No entries for {monthLabel}</p>
-                <button onClick={() => setShowModal(true)}
-                  className="text-xs font-bold flex items-center gap-1 px-3 py-2 text-slate-950"
-                  style={{ backgroundColor: 'var(--accent)' }}>
-                  <Plus size={12} /> Add Entry
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {sortedDates.map(date => {
-                  const dayEntries = grouped[date];
-                  const dayNet     = dayEntries.reduce((s, e) => s + e.amount, 0);
-                  return (
-                    <div key={date}>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{formatDateLabel(date)}</p>
-                        <p className="text-xs font-bold" style={{ color: dayNet >= 0 ? 'rgb(34,197,94)' : 'rgb(239,68,68)' }}>
-                          {dayNet >= 0 ? '+' : ''}{fmt(dayNet)}
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        {dayEntries.map(entry => {
-                          const isIncome      = entry.amount > 0;
-                          const contactName   = getContactName(entry.customer_id);
-                          const isDeleting    = deletingId === entry.id;
-                          const entrySchedule = entry.recurring_id
-                            ? schedules.find(s => s.id === entry.recurring_id) : null;
-                          const stripe = isIncome ? 'rgb(34,197,94)' : 'rgb(239,68,68)';
-                          const dimBorder = isIncome ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)';
-                          const dimLine   = isIncome ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+            {/* ── Views ── */}
 
-                          return (
-                            <div key={entry.id}
-                              className="bg-slate-800 border flex items-stretch transition-all"
-                              style={{ borderColor: dimBorder, opacity: isDeleting ? 0.4 : 1 }}>
-                              <div className="w-1 flex-shrink-0" style={{ backgroundColor: stripe }} />
-                              <div className="flex-1 px-4 py-3">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <p className="text-slate-100 font-semibold text-sm truncate">{entry.label}</p>
-                                      {entrySchedule && (
-                                        <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold flex-shrink-0"
-                                          style={{ color: 'var(--accent)', backgroundColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.12)' }}>
-                                          <RefreshCw size={8} /> {getFreqLabel(entrySchedule.frequency)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {entry.category && <p className="text-slate-400 text-xs truncate">{entry.category}</p>}
-                                    {contactName && (
-                                      <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--accent)' }}>
-                                        <User size={10} /> {contactName}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <p className="text-base font-bold flex-shrink-0" style={{ color: stripe }}>
-                                    {isIncome ? '+' : '-'}{fmt(Math.abs(entry.amount))}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex flex-col border-l" style={{ borderColor: dimLine }}>
-                                <button onClick={() => setEditingEntry(entry)}
-                                  className="flex-1 px-3 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-700/40 border-b transition-colors"
-                                  style={{ borderColor: dimLine }}>
-                                  <Pencil size={13} />
-                                </button>
-                                <button onClick={() => handleDelete(entry.id)} disabled={isDeleting}
-                                  className="flex-1 px-3 flex items-center justify-center text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-40">
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+            {viewMode === 'list' && (
+              sortedDates.length === 0 ? (
+                <div className="bg-slate-800 border p-10 flex flex-col items-center justify-center gap-3"
+                  style={{ borderColor: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.2)' }}>
+                  <DollarSign size={32} style={{ color: 'rgba(var(--accent-r),var(--accent-g),var(--accent-b),0.3)' }} />
+                  <p className="text-slate-400 text-sm">No entries for {monthLabel}</p>
+                  <button onClick={() => setShowModal(true)}
+                    className="text-xs font-bold flex items-center gap-1 px-3 py-2 text-slate-950"
+                    style={{ backgroundColor: 'var(--accent)' }}>
+                    <Plus size={12} /> Add Entry
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {sortedDates.map(date => {
+                    const dayEntries = grouped[date];
+                    const dayNet     = dayEntries.reduce((s, e) => s + e.amount, 0);
+                    return (
+                      <div key={date}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{formatDateLabel(date)}</p>
+                          <p className="text-xs font-bold" style={{ color: dayNet >= 0 ? 'rgb(34,197,94)' : 'rgb(239,68,68)' }}>
+                            {dayNet >= 0 ? '+' : ''}{fmt(dayNet)}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          {dayEntries.map(entry => (
+                            <EntryCard key={entry.id} entry={entry} schedules={schedules}
+                              contacts={contacts} deletingId={deletingId}
+                              isPartnerEntry={entry.user_id !== user?.id}
+                              onEdit={setEditingEntry} onDelete={handleDelete}
+                              onTogglePaid={handleTogglePaid} />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )
             )}
+
+            {viewMode === 'weekly' && (
+              <WeeklyView
+                entries={entries} viewYear={viewYear} viewMonth={viewMonth}
+                schedules={schedules} contacts={contacts} deletingId={deletingId}
+                userId={user?.id ?? ''}
+                onEdit={setEditingEntry} onDelete={handleDelete}
+                onTogglePaid={handleTogglePaid} onAddForDate={openAddForDate}
+              />
+            )}
+
           </main>
         </div>
 
